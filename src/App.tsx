@@ -101,7 +101,7 @@ export default function App() {
 
     } catch (error) {
       console.error('Translation failed', error);
-      alert('Gagal menerjemahkan. Silakan coba lagi.');
+      alert(error instanceof Error ? error.message : 'Gagal menerjemahkan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
