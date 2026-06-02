@@ -46,6 +46,7 @@ export default function App() {
   const [extras, setExtras] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [history, setHistory] = useState<{ id: string; text: string; result: string; lang: string; isFavorite: boolean }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history');
@@ -71,6 +72,7 @@ export default function App() {
     if (!inputText.trim()) return;
 
     setLoading(true);
+    setErrorMessage('');
     try {
       const response = await fetch('/api/translate', {
         method: 'POST',
@@ -87,6 +89,7 @@ export default function App() {
 
       setTranslation(data.translation);
       setExtras(data.extras || '');
+      setErrorMessage('');
 
       // Add to history
       const newEntry = {
@@ -99,9 +102,11 @@ export default function App() {
       const newHistory = [newEntry, ...history].slice(0, 50); // Keep more history
       saveToStorage(newHistory);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Translation failed', error);
-      alert(error instanceof Error ? error.message : 'Gagal menerjemahkan. Silakan coba lagi.');
+      setErrorMessage(error instanceof Error ? error.message : 'Gagal menerjemahkan. Silakan coba lagi.');
+      setTranslation('');
+      setExtras('');
     } finally {
       setLoading(false);
     }
@@ -365,7 +370,7 @@ export default function App() {
 
             <AnimatePresence mode="wait">
               <motion.div 
-                key={loading ? 'loading' : translation ? 'result' : 'empty'}
+                key={loading ? 'loading' : errorMessage ? 'error' : translation ? 'result' : 'empty'}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -375,6 +380,20 @@ export default function App() {
                   <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-500">
                     <Loader2 size={40} className="animate-spin text-blue-500" />
                     <p className="text-sm font-medium animate-pulse">Sedang memproses terjemahan...</p>
+                  </div>
+                ) : errorMessage ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-red-500">
+                    <div className="bg-red-50 p-4 rounded-full mb-4 text-red-600">
+                      <Info size={32} />
+                    </div>
+                    <p className="text-sm font-semibold mb-1">Terjadi Kesalahan</p>
+                    <p className="text-xs text-red-400 max-w-sm">{errorMessage}</p>
+                    <button 
+                      onClick={handleTranslate} 
+                      className="mt-4 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold rounded-xl transition-all"
+                    >
+                      Coba Lagi
+                    </button>
                   </div>
                 ) : translation ? (
                   <>
