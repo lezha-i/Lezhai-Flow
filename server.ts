@@ -28,12 +28,19 @@ async function startServer() {
     });
   };
 
-  // Helper with automatic retry and model fallback for high-demand / temporary errors
+  // Helper with automatic retry and model fallback for high-demand / temporary / quota errors
   const generateWithFallback = async (ai: GoogleGenAI, params: any) => {
-    const modelsToTry = ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+    const modelsToTry = [
+      "gemini-2.5-flash",
+      "gemini-1.5-flash",
+      "gemini-3.5-flash",
+      "gemini-2.5-pro",
+      "gemini-1.5-flash-8b"
+    ];
     let lastError: any = null;
 
     for (const model of modelsToTry) {
+      let modelFailed = false;
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           console.warn(`Sending translation request to model: ${model} (attempt ${attempt})`);
@@ -49,6 +56,22 @@ async function startServer() {
           const status = err.status || (err.error && err.error.status) || "";
           const code = err.code || (err.error && err.error.code) || 0;
 
+          // Check if it's an API Key or Authentication issue - these are fatal and won't work on other models
+          const isFatalAuthError = 
+            msg.includes("api key") || 
+            msg.includes("invalid key") ||
+            msg.includes("key_invalid") ||
+            msg.includes("unauthorized") ||
+            status === "UNAUTHENTICATED" ||
+            status === "PERMISSION_DENIED" ||
+            code === 401 ||
+            code === 403;
+
+          if (isFatalAuthError) {
+            console.error(`Fatal Auth Error detected (${status}/${code}): ${msg}. Aborting model list.`);
+            throw err;
+          }
+
           const isTemporary =
             status === "UNAVAILABLE" ||
             code === 503 ||
@@ -58,18 +81,22 @@ async function startServer() {
             msg.includes("temporary");
 
           if (isTemporary) {
-            console.warn(`Model ${model} attempt ${attempt} failed with high-demand/temporary error. Retrying in 500ms... Error: ${msg}`);
+            console.warn(`Model ${model} attempt ${attempt} failed with temporary error/high demand. Retrying in 500ms... Error: ${msg}`);
             await new Promise((resolve) => setTimeout(resolve, 500));
             continue;
           } else {
-            // Re-throw hard/auth/configuration errors immediately
-            console.error(`Model ${model} failed with non-temporary error: ${msg}. Re-throwing...`);
-            throw err;
+            // For quota exhausted (429) or other model-specific errors, log and proceed to the next available model
+            console.warn(`Model ${model} failed with error (${status}/${code}): ${msg}. Moving to the next model in fallback chain...`);
+            modelFailed = true;
+            break; // Break current attempt loop and move to next model
           }
         }
       }
+      if (modelFailed) {
+        continue;
+      }
     }
-    throw lastError || new Error("Semua model AI sedang sibuk. Silakan coba beberapa saat lagi.");
+    throw lastError || new Error("Semua model AI sedang melampaui kuota atau tidak tersedia. Silakan hubungi admin atau coba lagi nanti.");
   };
 
   // API Routes
